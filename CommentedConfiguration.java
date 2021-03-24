@@ -227,8 +227,8 @@ public class CommentedConfiguration {
         this.config = YamlConfiguration.loadConfiguration(this.file);
     }
 
-    public String get(String path) {
-        return singleKeyMap.get(path);
+    public Object get(String path) {
+        return this.config.get(path);
     }
 
     public void set(String path, Object value) {
