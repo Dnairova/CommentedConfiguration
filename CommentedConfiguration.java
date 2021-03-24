@@ -16,7 +16,7 @@ import java.util.List;
 public class CommentedConfiguration {
 
     private HashMap<String, List<String>> comments;
-    private HashMap<String, String> singleKeyMap;
+    private HashMap<String, Object> singleKeyMap;
     private List<String> attach;
     private FileConfiguration config;
     public FileConfiguration getConfig() { return config; }
@@ -32,23 +32,14 @@ public class CommentedConfiguration {
         CommentedConfiguration newWrapper = new CommentedConfiguration();
         newWrapper.file = file;
         newWrapper.config = new YamlConfiguration();
-
-        try { newWrapper.load();
-        } catch (IOException e) {
-            e.printStackTrace();
-            return newWrapper;
-        }
-
+        if (!newWrapper.load()) { return null; }
         newWrapper.applyModifications(loadFromJar(name));
-        try { newWrapper.save();
-        } catch (IOException e) { e.printStackTrace(); }
+        if (!newWrapper.save()) { return null; }
         return newWrapper;
     }
 
     private static CommentedConfiguration loadFromJar(String name) {
         CommentedConfiguration newWrapper = new CommentedConfiguration();
-        InputStream iStream = newWrapper.getClass().getResourceAsStream("/" + name);
-        BufferedReader reader = new BufferedReader(new InputStreamReader(iStream));
         newWrapper.config = new YamlConfiguration();
         try { newWrapper.loadFromReader(name);
         } catch (IOException e) {
@@ -59,19 +50,29 @@ public class CommentedConfiguration {
     }
 
     private void applyModifications(CommentedConfiguration fromJar) {
-        HashMap<String, String> newSingleKeyMap = new HashMap<>();
-        this.attach.clear();
-        this.attach.addAll(fromJar.attach);
-        this.comments.clear();
-        this.comments.putAll(fromJar.comments);
+        HashMap<String, Object> newSingleKeyMap = new HashMap<>();
+
+        for (String str : fromJar.attach) {
+            if (this.attach.contains(str)) continue;
+            this.attach.add(str);
+        }
+
+        for (String keyComments: fromJar.comments.keySet()) {
+            if (this.comments.containsKey(keyComments)) {
+                this.comments.get(keyComments).clear();
+                this.comments.get(keyComments).addAll(fromJar.comments.get(keyComments));
+                continue;
+            }
+            this.comments.put(keyComments, fromJar.comments.get(keyComments));
+        }
+
         for (String map : fromJar.singleKeyMap.keySet()) {
-            if (this.singleKeyMap.containsKey(map) && !this.singleKeyMap.get(map).equalsIgnoreCase("")) {
+            if (this.singleKeyMap.containsKey(map) && this.singleKeyMap.get(map) != null) {
                 newSingleKeyMap.put(map, this.singleKeyMap.get(map));
             } else {
                 newSingleKeyMap.put(map, fromJar.singleKeyMap.get(map));
             }
         }
-        this.singleKeyMap.clear();
         this.singleKeyMap.putAll(newSingleKeyMap);
     }
 
@@ -79,9 +80,7 @@ public class CommentedConfiguration {
         ArrayList<String> values = new ArrayList<>();
         if (this.config.get(key) instanceof MemorySection) {
             for (String innerkey : this.config.getConfigurationSection(key).getKeys(false)) {
-                for (String endpoint : getUltimateValue(key + "." + innerkey)) {
-                    values.add(endpoint);
-                }
+                values.addAll(getUltimateValue(key + "." + innerkey));
             }
         } else { values.add(key); }
         return values;
@@ -125,7 +124,7 @@ public class CommentedConfiguration {
 
 
     private String shifter(HashMap<String, List<String>> formalized, String key, int shift, String complete) {
-        StringBuilder builder = new StringBuilder("");
+        StringBuilder builder = new StringBuilder();
         for (int i = 0; i < shift; i++) { builder.append("  "); }
         builder.append(key).append(":\n");
         for (String inner : formalized.get(key)) {
@@ -167,7 +166,7 @@ public class CommentedConfiguration {
                     this.comments.put(sc, new ArrayList<>(comments));
                 }
                 for (String str : endpoints) {
-                    singleKeyMap.put(str, String.valueOf(config.get(str)));
+                    singleKeyMap.put(str, config.get(str));
                 }
                 comments.clear();
                 this.attach.add(sc);
@@ -179,18 +178,26 @@ public class CommentedConfiguration {
      *  | =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
      *  |  */
 
-    public void load() throws IOException {
+    public boolean load() {
         try {
             this.config.load(file);
-        } catch (InvalidConfigurationException e) {
-            e.printStackTrace(); return;
+        } catch (InvalidConfigurationException | IOException e) {
+            e.printStackTrace(); return false;
         }
         this.comments.clear(); this.singleKeyMap.clear(); this.attach.clear();
         BufferedReader reader;
-        reader = new BufferedReader(new FileReader(file));
+        try {
+            reader = new BufferedReader(new FileReader(file));
+        } catch (FileNotFoundException e) {
+            e.printStackTrace(); return false;
+        }
         String line;
         ArrayList<String> comments = new ArrayList<>();
-        while ((line = reader.readLine()) != null) {
+        while (true) {
+            try { if ((line = reader.readLine()) == null) break;
+            } catch (IOException e) {
+                e.printStackTrace(); return false;
+            }
             if (line.matches("^(#(\\s*).+)")) { // is it a comment?
                 comments.add(line);
             } else if (line.matches("^(\\w+:)") || line.matches("^(\\w+:\\s.+)")) { // is it a key?
@@ -201,17 +208,22 @@ public class CommentedConfiguration {
                     this.comments.put(sc, new ArrayList<>(comments));
                 }
                 for (String str : endpoints) {
-                    singleKeyMap.put(str, String.valueOf(config.get(str)));
+                    singleKeyMap.put(str, config.get(str));
                 }
                 comments.clear();
                 this.attach.add(sc);
             }
         }
+        return true;
     }
 
-    public void save() throws IOException {
-        BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-        StringBuilder configBuilder = new StringBuilder("");
+    public boolean save() {
+        BufferedWriter writer;
+        try { writer = new BufferedWriter(new FileWriter(file));
+        } catch (IOException e) {
+            e.printStackTrace(); return false;
+        }
+        StringBuilder configBuilder = new StringBuilder();
         for (String attach : this.attach) { // loop all points node
             if (this.comments.containsKey(attach)) {
                 for (String comment : comments.get(attach)) {
@@ -221,10 +233,17 @@ public class CommentedConfiguration {
             configBuilder.append("\n");
             configBuilder.append(formatKey(attach));
         }
-        writer.write(configBuilder.toString());
-        writer.flush();
-        writer.close();
+        try {
+            writer.write(configBuilder.toString());
+            writer.flush();
+            writer.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+
         this.config = YamlConfiguration.loadConfiguration(this.file);
+        return true;
     }
 
     public Object get(String path) {
@@ -232,6 +251,6 @@ public class CommentedConfiguration {
     }
 
     public void set(String path, Object value) {
-        this.singleKeyMap.replace(path, String.valueOf(value));
+        this.singleKeyMap.put(path, value);
     }
 }
