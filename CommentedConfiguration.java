@@ -15,11 +15,11 @@ import java.util.List;
 
 public class CommentedConfiguration {
 
-    private HashMap<String, List<String>> comments;
-    private HashMap<String, Object> singleKeyMap;
-    private List<String> attach;
+    private final HashMap<String, List<String>> comments;
+    private final HashMap<String, Object> singleKeyMap;
+    private final List<String> attach;
+    
     private FileConfiguration config;
-    public FileConfiguration getConfig() { return config; }
     private File file;
 
     private CommentedConfiguration() {
@@ -174,10 +174,6 @@ public class CommentedConfiguration {
         }
     }
 
-    /** |
-     *  | =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-     *  |  */
-
     public boolean load() {
         try {
             this.config.load(file);
@@ -252,5 +248,9 @@ public class CommentedConfiguration {
 
     public void set(String path, Object value) {
         this.singleKeyMap.put(path, value);
+    }
+    
+    public FileConfiguration getConfig() {
+        return config; 
     }
 }
